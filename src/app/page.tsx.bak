@@ -1,0 +1,110 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import Section from "@/components/Section"
+import LogoRail from "@/components/LogoRail"
+import WorkCard from "@/components/WorkCard"
+import PreviewStrip from "@/components/ui/PreviewStrip"
+import Tabs, { TabDef } from "@/components/ui/Tabs"
+import Link from "next/link"
+import SafeImage from "@/components/SafeImage"
+import { allProjects, allPublications } from "contentlayer/generated"
+
+type Cat = "poster" | "illustration" | "branding" | "publication"
+
+const tabs: TabDef[] = [
+  { id: "poster", label: "Posters" },
+  { id: "illustration", label: "Illustrations" }, { id: "branding", label: "Branding" }, { id: "publication", label: "Publications" },
+]
+
+export default function HomePage() {
+  const cards = useMemo(() => {
+    // Projects (dedupe by slug)
+    const seenProj = new Set<string>()
+    const proj = (allProjects || [])
+      .filter(p => { if (seenProj.has(p.slug)) return false; seenProj.add(p.slug); return true })
+      .map((p: any) => ({
+        id: p._id,
+        cat: p.category as Cat,
+        node: (
+          
+    $pre = $matches[1]
+    if ($pre -notmatch '\blink=') { $pre += '' }
+    if ($pre -notmatch '\bcategory=') { $pre += '' }
+    "$pre />"
+  
+        ),
+      }))
+
+    // Publications (prefer real image; else PDF to show live preview)
+    const seenFiles = new Set<string>()
+    const pubs = (allPublications || [])
+      .filter(p => (p.file || "").startsWith("/portfolio/pubs/"))
+      .filter(p => { const key = p.file || p._id; if (seenFiles.has(key)) return false; seenFiles.add(key); return true })
+      .map((p: any) => {
+        const cover = p.cover && !/\/cover\.svg$/i.test(p.cover) ? p.cover : (p.file as string)
+        return {
+          id: p._id,
+          cat: "publication" as Cat,
+          node: (
+            
+    $pre = $matches[1]
+    if ($pre -notmatch '\blink=') { $pre += '' }
+    if ($pre -notmatch '\bcategory=') { $pre += '' }
+    "$pre />"
+  
+          ),
+        }
+      })
+    return [...proj, ...pubs]
+  }, [])
+
+  const [current, setCurrent] = useState<Cat>("poster")
+  const previewItems = cards.filter((c) => c.cat === current).map((it) => ({ key: it.id, node: it.node }))
+
+  return (
+    <div className="__container">
+      <div className="brand-gradient rounded-2xl p-1 shadow-glow-lg">
+        <div className="rounded-2xl bg-[var(--bg)] border border-[color:var(--border)] overflow-hidden">
+          <div className="grid md:grid-cols-2 gap-0">
+            <div className="p-8 md:p-12">
+              <div className="max-w-2xl">
+                <h1 className="text-3xl md:text-4xl font-bold text-[var(--text)]">Jane Kamau</h1>
+                <p className="mt-2 text-[var(--text-muted)]">Graphic Designer  Posters  Illustrations  Publications</p>
+                <div className="mt-6 flex gap-3">
+                  <Link href="/work" className="btn">View Portfolio</Link>
+                  <Link href="/publications" className="btn secondary">Publications</Link>
+                  <Link href="/contact" className="btn" style={{ background: "var(--accent-2)" }}>Work with me</Link>
+                </div>
+              </div>
+            </div>
+            <div className="relative">
+              <SafeImage
+                src={"/portfolio/placeholders/profile%20photo.png"}
+                alt="Jane Kamau"
+                width={1600}
+                height={1000}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Section title="Featured Work" subtitle="Browse by category">
+        <Tabs tabs={tabs} initialId="poster" onChange={(id) => setCurrent(id as Cat)} className="mb-5" />
+        <PreviewStrip ariaLabel="Featured work preview" items={previewItems} />
+        <div className="mt-8">
+          <Link href="/work" className="text-[var(--text)] underline underline-offset-4">See all work</Link>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+<LogoRail />
+
+
+
+
+

@@ -1,0 +1,125 @@
+﻿'use server'
+
+import { z } from 'zod'
+
+const Schema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  message: z.string().min(1),
+  projectType: z.string().optional(),
+  budget: z.string().optional(),
+})
+
+type ActionState = { ok: boolean; error?: string }
+
+function splitEmails(v: string): string[] {
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function parseFrom(input: string): { email: string; name?: string } {
+  const m = input.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+  if (m) {
+    const name = m[1]?.trim()
+    const email = m[2]?.trim()
+    return { email, name: name || undefined }
+  }
+  return { email: input.trim() }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+async function sendEmail(data: z.infer<typeof Schema>): Promise<ActionState> {
+  try {
+    const token = process.env.MAILTRAP_API_TOKEN || process.env.SMTP_PASS
+    if (!token) {
+      throw new Error('Missing MAILTRAP_API_TOKEN (or SMTP_PASS fallback).')
+    }
+
+    const fromRaw = process.env.EMAIL_FROM || 'Jane Kamau <no-reply@janekamau.site>'
+    const from = parseFrom(fromRaw)
+
+    const toRaw = process.env.EMAIL_TO
+    if (!toRaw) throw new Error('Missing required env var: EMAIL_TO')
+
+    const toEmails = splitEmails(toRaw)
+    if (!toEmails.length) throw new Error('EMAIL_TO is empty.')
+
+    const subject = `New message from ${data.name}`
+
+    const text = [
+      `Name: ${data.name}`,
+      `Email: ${data.email}`,
+      data.projectType ? `Project type: ${data.projectType}` : '',
+      data.budget ? `Budget: ${data.budget}` : '',
+      '',
+      data.message,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const html = `
+      <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;">
+        <h2>New portfolio inquiry</h2>
+        <p><b>Name:</b> ${escapeHtml(data.name)}</p>
+        <p><b>Email:</b> ${escapeHtml(data.email)}</p>
+        ${data.projectType ? `<p><b>Project type:</b> ${escapeHtml(data.projectType)}</p>` : ''}
+        ${data.budget ? `<p><b>Budget:</b> ${escapeHtml(data.budget)}</p>` : ''}
+        <p><b>Message:</b></p>
+        <pre style="white-space: pre-wrap; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">${escapeHtml(
+          data.message
+        )}</pre>
+      </div>
+    `.trim()
+
+    const payload = {
+      from: { email: from.email, ...(from.name ? { name: from.name } : {}) },
+      to: toEmails.map((email) => ({ email })),
+      subject,
+      text,
+      html,
+      reply_to: { email: data.email, name: data.name },
+    }
+
+    const res = await fetch('https://send.api.mailtrap.io/api/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Token': token,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`Mailtrap send failed (${res.status}): ${body || res.statusText}`)
+    }
+
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to send'
+    return { ok: false, error: msg }
+  }
+}
+
+export async function submitContact(formData: FormData): Promise<ActionState> {
+  const data = Schema.parse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+    message: formData.get('message'),
+    projectType: formData.get('projectType') ?? undefined,
+    budget: formData.get('budget') ?? undefined,
+  })
+  return sendEmail(data)
+}
+
+export const sendContact = submitContact
